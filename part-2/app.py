@@ -54,6 +54,18 @@ def add_student():
         course = request.form['course']
 
         conn = get_db_connection()
+
+        # Check if email already exists
+        existing_student = conn.execute(
+            'SELECT * FROM students WHERE email = ?',
+            (email,)
+        ).fetchone()
+
+        if existing_student:
+            conn.close()
+            flash('Email already exists! Please use a different email.', 'danger')
+            return redirect(url_for('index'))
+        
         conn.execute(
             'INSERT INTO students (name, email, course) VALUES (?, ?, ?)',
             (name, email, course)
@@ -74,7 +86,7 @@ def add_student():
 @app.route('/')
 def index():
     conn = get_db_connection()
-    students = conn.execute('SELECT * FROM students ORDER BY id DESC').fetchall()  # Newest first
+    students = conn.execute('SELECT * FROM students ORDER BY id ASC').fetchall()  # Newest last
     conn.close()
     return render_template('index.html', students=students)
 
@@ -106,6 +118,24 @@ def edit_student(id):
     student = conn.execute('SELECT * FROM students WHERE id = ?', (id,)).fetchone()
     conn.close()
     return render_template('edit.html', student=student)
+
+
+# =============================================================================
+# SEARCH - Find students by name
+# =============================================================================
+
+@app.route('/search')
+def search_student():
+    query = request.args.get('query', '')  # Get search text from URL
+
+    conn = get_db_connection()
+    students = conn.execute(
+        "SELECT * FROM students WHERE name LIKE ?",
+        ('%' + query + '%',)
+    ).fetchall()
+    conn.close()
+
+    return render_template('index.html', students=students, search_query=query)
 
 
 # =============================================================================
@@ -156,15 +186,5 @@ if __name__ == '__main__':
 # 4. flash('message', 'category')
 #    - Shows one-time message to user
 #    - Categories: 'success', 'danger', 'warning', 'info'
-#
-# =============================================================================
-
-
-# =============================================================================
-# EXERCISE:
-# =============================================================================
-#
-# 1. Add a "Search" feature to find students by name
-# 2. Add validation to check if email already exists before adding
 #
 # =============================================================================
