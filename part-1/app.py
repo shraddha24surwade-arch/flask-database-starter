@@ -64,8 +64,8 @@ def add_sample_student():
     """Add a sample student to database (for testing)"""
     conn = get_db_connection()
     conn.execute(
-        'INSERT INTO students (name, email, course) VALUES [(?, ?, ?)',
-        ('Shreya', 'shreya@example.com', 'Flask')  # ? are placeholders (safe from SQL injection)
+        'INSERT INTO students (name, email, course) VALUES (?, ?, ?)',
+        ('Shraddha', 'shraddha@example.com', 'Java')  # ? are placeholders (safe from SQL injection)
     )
     # for adding multiple rows at a time:
     # students = [

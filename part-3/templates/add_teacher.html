@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Teacher - Part 3</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f0f4f8; }
+        form { background: white; padding: 30px; border-radius: 8px; max-width: 400px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 100%; padding: 10px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .btn-submit { background: #e67e22; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-cancel { background: #ccc; color: #333; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Add New Teacher</h1>
+    <form method="POST">
+        <label for="name">Teacher Name:</label>
+        <input type="text" id="name" name="name" required>
+
+        <label for="course_id">Assign to Course:</label>
+        <select id="course_id" name="course_id" required>
+            {% for course in courses %}
+                <option value="{{ course.id }}">{{ course.name }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="submit" class="btn-submit">Add Teacher</button>
+        <a href="{{ url_for('courses') }}" class="btn btn-cancel"> Cancel </a>
+    </form>
+</body>
+</html>

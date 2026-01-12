@@ -17,7 +17,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy  # Import SQLAlchemy
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'
+app.secret_key = 'abcxyz'
 
 # =============================================================================
 # DATABASE CONFIGURATION
@@ -39,6 +39,8 @@ class Course(db.Model):  # Course table
 
     # Relationship: One Course has Many Students
     students = db.relationship('Student', backref='course', lazy=True)
+    # Relationship to include Teacher field
+    teachers = db.relationship('Teacher', backref='course', lazy=True) 
 
     def __repr__(self):  # How to display this object
         return f'<Course {self.name}>'
@@ -54,7 +56,17 @@ class Student(db.Model):  # Student table
 
     def __repr__(self):
         return f'<Student {self.name}>'
+    
+class Teacher(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    
+    # Foreign Key: Links teacher to a course
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
 
+    def __repr__(self):
+        return f'<Teacher {self.name}>'
+    
 
 # =============================================================================
 # ROUTES - Using ORM instead of raw SQL
@@ -65,6 +77,20 @@ def index():
     # OLD WAY (raw SQL): conn.execute('SELECT * FROM students').fetchall()
     # NEW WAY (ORM):
     students = Student.query.all()  # Get all students
+
+    #----------------------------------------------------------------------------
+    # Exercise 2: Trying different query methods: `filter()`, `order_by()`, `limit()`
+
+    # Example A: Show Students of a Specific Course 
+    #students = Student.query.filter(Student.course_id == course_id).all()
+
+    # Example B: Show students alphabetized by name
+    #students = Student.query.order_by(Student.name).all()
+    #students = Student.query.order_by(Student.name.asc()).all()
+    
+    # Example C: Limit, Get only first 2 students
+    #students= Student.query.limit(2).all()
+
     return render_template('index.html', students=students)
 
 
@@ -137,6 +163,23 @@ def add_course():
         return redirect(url_for('courses'))
 
     return render_template('add_course.html')
+
+
+@app.route('/add-teacher', methods=['GET', 'POST'])
+def add_teacher():
+    if request.method == 'POST':
+        name = request.form['name']
+        course_id = request.form['course_id']
+
+        new_teacher = Teacher(name=name, course_id=course_id)
+        db.session.add(new_teacher)
+        db.session.commit()
+
+        flash('Teacher added successfully!', 'success')
+        return redirect(url_for('courses')) # Redirect to courses to see the update
+
+    courses = Course.query.all()
+    return render_template('add_teacher.html', courses=courses)
 
 
 # =============================================================================
