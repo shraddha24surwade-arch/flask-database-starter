@@ -60,7 +60,8 @@ class Student(db.Model):  # Student table
 class Teacher(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    
+    email = db.Column(db.String(120), unique=True, nullable=False)
+
     # Foreign Key: Links teacher to a course
     course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False)
 
@@ -98,7 +99,6 @@ def index():
 def courses():
     all_courses = Course.query.all()  # Get all courses
     return render_template('courses.html', courses=all_courses)
-
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_student():
@@ -165,22 +165,54 @@ def add_course():
     return render_template('add_course.html')
 
 
+@app.route('/teachers')
+def teachers():
+    teachers = Teacher.query.all()
+    return render_template('teachers.html', teachers=teachers)
+
 @app.route('/add-teacher', methods=['GET', 'POST'])
 def add_teacher():
     if request.method == 'POST':
         name = request.form['name']
+        email = request.form['email']
         course_id = request.form['course_id']
 
-        new_teacher = Teacher(name=name, course_id=course_id)
-        db.session.add(new_teacher)
-        db.session.commit()
+        new_teacher = Teacher(name=name, email=email, course_id=course_id)  # Create object
+        db.session.add(new_teacher)  # Add to session
+        db.session.commit()  # Save to database
 
-        flash('Teacher added successfully!', 'success')
-        return redirect(url_for('courses')) # Redirect to courses to see the update
+        flash('teacher added successfully!', 'success')
+        return redirect(url_for('teachers'))
 
-    courses = Course.query.all()
+    courses = Course.query.all()  # Get courses for dropdown
     return render_template('add_teacher.html', courses=courses)
 
+@app.route('/edit-teacher/<int:id>', methods=['GET', 'POST'])
+def edit_teacher(id):
+    # OLD WAY: conn.execute('SELECT * FROM teachers WHERE id = ?', (id,))
+    # NEW WAY:
+    teacher = Teacher.query.get_or_404(id)  # Get by ID or show 404 error
+
+    if request.method == 'POST':
+        teacher.name = request.form['name']  # Just update the object
+        teacher.email = request.form['email']
+        teacher.course_id = request.form['course_id']
+
+        db.session.commit()  # Save changes
+        flash('Teacher updated!', 'success')
+        return redirect(url_for('teachers'))
+
+    courses = Course.query.all()
+    return render_template('edit_teacher.html', teacher=teacher, courses=courses)
+
+@app.route('/delete-teacher/<int:id>')
+def delete_teacher(id):
+    teacher = Teacher.query.get_or_404(id)
+    db.session.delete(teacher)  # Delete the object
+    db.session.commit()
+
+    flash('Teacher deleted!', 'danger')
+    return redirect(url_for('teachers'))
 
 # =============================================================================
 # CREATE TABLES AND ADD SAMPLE DATA
