@@ -1,9 +1,8 @@
-"""
-Part 4: REST API with Flask
+"""Part 4: REST API with Flask
 ===========================
 Build a JSON API for database operations (used by frontend apps, mobile apps, etc.)
 
-What You'll Learn:
+What You will Learn:
 - REST API concepts (GET, POST, PUT, DELETE)
 - JSON responses with jsonify
 - API error handling
@@ -17,7 +16,11 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
+from flask_cors import CORS
+
 app = Flask(__name__)
+CORS(app)
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///api_demo.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -31,24 +34,47 @@ db = SQLAlchemy(app)
 class Book(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
-    author = db.Column(db.String(100), nullable=False)
     year = db.Column(db.Integer)
     isbn = db.Column(db.String(20), unique=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def to_dict(self):  # Convert model to dictionary for JSON response
+    author_id = db.Column(  # Foreign Key (Many Books → One Author)
+        db.Integer,
+        db.ForeignKey('author.id'),
+        nullable=False )
+    def B_to_dict(self):
         return {
             'id': self.id,
             'title': self.title,
-            'author': self.author,
             'year': self.year,
             'isbn': self.isbn,
+            'author': {
+                'id': self.author_ref.id,
+                'name': self.author_ref.name
+            },
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
+class Author(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False, unique=True)
+    city = db.Column(db.String(100), nullable=False)
+    books = db.relationship(  # One-to-Many relationship
+        'Book',
+        backref='author_ref',
+        lazy=True,
+        cascade='all, delete-orphan' )
+    def A_to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'city': self.city,
+            'books': [book.B_to_dict() for book in self.books]
+        }
+
+
 
 # =============================================================================
-# REST API ROUTES
+# REST API ROUTES FOR BOOK
 # =============================================================================
 
 # GET /api/books - Get all books
@@ -58,7 +84,7 @@ def get_books():
     return jsonify({  # Return JSON response
         'success': True,
         'count': len(books),
-        'books': [book.to_dict() for book in books]  # List comprehension to convert all
+        'books': [book.B_to_dict() for book in books]  # List comprehension to convert all
     })
 
 
@@ -75,7 +101,7 @@ def get_book(id):
 
     return jsonify({
         'success': True,
-        'book': book.to_dict()
+        'book': book.B_to_dict()
     })
 
 
@@ -84,12 +110,18 @@ def get_book(id):
 def create_book():
     data = request.get_json()  # Get JSON data from request body
 
-    # Validation
     if not data:
         return jsonify({'success': False, 'error': 'No data provided'}), 400
 
-    if not data.get('title') or not data.get('author'):
-        return jsonify({'success': False, 'error': 'Title and author are required'}), 400
+    if not data.get('title'):
+        return jsonify({
+            'success': False,
+            'error': 'Title required'
+        }), 400
+
+    author = Author.query.get(data['author_id'])
+    if not author:
+        return jsonify({'success': False, 'error': 'Author not found'}), 404
 
     # Check for duplicate ISBN
     if data.get('isbn'):
@@ -97,12 +129,11 @@ def create_book():
         if existing:
             return jsonify({'success': False, 'error': 'ISBN already exists'}), 400
 
-    # Create book
     new_book = Book(
         title=data['title'],
-        author=data['author'],
-        year=data.get('year'),  # Optional field
-        isbn=data.get('isbn')
+        year=data.get('year'),
+        isbn=data.get('isbn'),
+        author_id=data['author_id']
     )
 
     db.session.add(new_book)
@@ -111,7 +142,7 @@ def create_book():
     return jsonify({
         'success': True,
         'message': 'Book created successfully',
-        'book': new_book.to_dict()
+        'book': new_book.B_to_dict()
     }), 201  # 201 = Created
 
 
@@ -143,7 +174,7 @@ def update_book(id):
     return jsonify({
         'success': True,
         'message': 'Book updated successfully',
-        'book': book.to_dict()
+        'book': book.B_to_dict()
     })
 
 
@@ -165,35 +196,233 @@ def delete_book(id):
 
 
 # =============================================================================
+# REST API ROUTES FOR AUTHOR
+# =============================================================================
+
+# GET /api/authors - Get all authors
+@app.route('/api/authors', methods=['GET'])
+def get_authors():
+    authors = Author.query.all()
+    return jsonify({  # Return JSON response
+        'success': True,
+        'count': len(authors),
+        'authors': [author.A_to_dict() for author in authors]  # List comprehension to convert all
+    })
+
+
+# GET /api/authors/<id> - Get single author
+@app.route('/api/authors/<int:id>', methods=['GET'])
+def get_author(id):
+    author = Author.query.get(id)
+
+    if not author:
+        return jsonify({
+            'success': False,
+            'error': 'Author not found'
+        }), 404  # Return 404 status code
+
+    return jsonify({
+        'success': True,
+        'author': author.A_to_dict()
+    })
+
+
+# POST /api/authors - Create new author
+@app.route('/api/authors', methods=['POST'])
+def create_author():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    if not data.get('name') or not data.get('city'):
+        return jsonify({
+            'success': False,
+            'error': 'Name and city are required'
+        }), 400
+
+    existing = Author.query.filter_by(name=data['name']).first()
+    if existing:
+        return jsonify({'success': False, 'error': 'Author already exists'}), 400
+
+    new_author = Author(
+        name=data['name'],
+        city=data['city']
+    )
+
+    db.session.add(new_author)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Author created successfully',
+        'author': new_author.A_to_dict()
+    }), 201
+
+
+# PUT /api/authors/<id> - Update author
+@app.route('/api/authors/<int:id>', methods=['PUT'])
+def update_author(id):
+    author = Author.query.get(id)
+
+    if not author:
+        return jsonify({'success': False, 'error': 'Author not found'}), 404
+
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    # Update fields if provided
+    if 'name' in data:
+        author.name = data['name']
+    if 'book_name' in data:
+        author.book_name = data['book_name']
+    if 'city' in data:
+        author.city = data['city']
+
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Author updated successfully',
+        'author': author.A_to_dict()
+    })
+
+
+# DELETE /api/authors/<id> - Delete author
+@app.route('/api/authors/<int:id>', methods=['DELETE'])
+def delete_author(id):
+    author = Author.query.get(id)
+
+    if not author:
+        return jsonify({'success': False, 'error': 'Author not found'}), 404
+
+    db.session.delete(author)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Author deleted successfully'
+    })
+
+
+# =============================================================================
 # BONUS: Search and Filter
 # =============================================================================
 
 # GET /api/books/search?q=python&author=john
 @app.route('/api/books/search', methods=['GET'])
 def search_books():
-    query = Book.query
+    query = Book.query.join(Author)
 
-    # Filter by title (partial match)
-    title = request.args.get('q')  # Query parameter: ?q=python
+    title = request.args.get('title')
     if title:
-        query = query.filter(Book.title.ilike(f'%{title}%'))  # Case-insensitive LIKE
+        query = query.filter(Book.title.ilike(f'%{title}%'))
 
-    # Filter by author
     author = request.args.get('author')
     if author:
-        query = query.filter(Book.author.ilike(f'%{author}%'))
+        query = query.filter(Author.name.ilike(f'%{author}%'))
 
-    # Filter by year
     year = request.args.get('year')
     if year:
-        query = query.filter_by(year=int(year))
+        query = query.filter(Book.year == int(year))
 
     books = query.all()
 
     return jsonify({
         'success': True,
         'count': len(books),
-        'books': [book.to_dict() for book in books]
+        'books': [book.B_to_dict() for book in books]
+    })
+
+
+# Search Author
+@app.route('/api/authors/search', methods=['GET'])
+def search_authors():
+    query = Author.query.join(Book)
+
+    name = request.args.get('name')
+    if name:
+        query = query.filter(Author.name.ilike(f'%{name}%'))
+
+    city = request.args.get('city')
+    if city:
+        query = query.filter(Author.city.ilike(f'%{city}%'))
+
+    title = request.args.get('title')
+    if title:
+        query = query.filter(Book.title.ilike(f'%{title}%'))
+
+    authors = query.all()
+
+    return jsonify({
+        'success': True,
+        'count': len(authors),
+        'authors': [author.A_to_dict() for author in authors]
+    })
+
+# =============================================================================
+# ADD PAGINATION
+# =============================================================================
+@app.route('/api/books/paginated', methods=['GET'])
+def get_books_paginated():
+    # Get query params with defaults
+    page = request.args.get('page', default=1, type=int)
+    per_page = request.args.get('per_page', default=5, type=int)
+
+    # Paginate query
+    pagination = Book.query.order_by(Book.id.asc()).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False
+    )
+
+    return jsonify({
+        'success': True,
+        'page': page,
+        'per_page': per_page,
+        'total_items': pagination.total,
+        'total_pages': pagination.pages,
+        'books': [book.B_to_dict() for book in pagination.items]
+    })
+
+
+# =============================================================================
+# ADD SORTING
+# =============================================================================
+@app.route('/api/books/sorted', methods=['GET'])
+def get_books_sorted():
+    # Query params
+    sort_field = request.args.get('sort', default='id')
+    order = request.args.get('order', default='asc')
+
+    # Allowed columns for sorting
+    allowed_sorts = {
+        'id': Book.id,
+        'title': Book.title,
+        'year': Book.year,
+        'isbn': Book.isbn,
+        'created_at': Book.created_at
+    }
+
+    # Validate sort field
+    sort_column = allowed_sorts.get(sort_field, Book.id)
+
+    # Apply ordering
+    if order.lower() == 'desc':
+        query = Book.query.order_by(sort_column.desc())
+    else:
+        query = Book.query.order_by(sort_column.asc())
+
+    books = query.all()
+
+    return jsonify({
+        'success': True,
+        'sort': sort_field,
+        'order': order,
+        'count': len(books),
+        'books': [book.B_to_dict() for book in books]
     })
 
 
@@ -289,13 +518,34 @@ def init_db():
     with app.app_context():
         db.create_all()
 
-        if Book.query.count() == 0:
-            sample_books = [
-                Book(title='Python Crash Course', author='Eric Matthes', year=2019, isbn='978-1593279288'),
-                Book(title='Flask Web Development', author='Miguel Grinberg', year=2018, isbn='978-1491991732'),
-                Book(title='Clean Code', author='Robert C. Martin', year=2008, isbn='978-0132350884'),
+        if Author.query.count() == 0:
+            authors = [
+                Author(name='Eric Matthes', city='New York'),
+                Author(name='Miguel Grinberg', city='Washington'),
+                Author(name='Robert C. Martin', city='London'),
             ]
-            db.session.add_all(sample_books)
+            db.session.add_all(authors)
+            db.session.commit()
+            print('Sample authors added!')
+
+        if Book.query.count() == 0:
+            eric = Author.query.filter_by(name='Eric Matthes').first()
+            miguel = Author.query.filter_by(name='Miguel Grinberg').first()
+            robert = Author.query.filter_by(name='Robert C. Martin').first()
+
+            books = [
+                Book(
+                    title='Python Crash Course', year=2019, isbn='978-1593279288', author_id=eric.id
+                ),
+                Book(
+                    title='Flask Web Development', year=2018, isbn='978-1491991732', author_id=miguel.id
+                ),
+                Book(
+                    title='Clean Code', year=2008, isbn='978-0132350884', author_id=robert.id
+                ),
+            ]
+
+            db.session.add_all(books)
             db.session.commit()
             print('Sample books added!')
 
